@@ -1,18 +1,35 @@
 from pathlib import Path
 
-import gdown
+import pandas as pd
+
+_HERE = Path(__file__).resolve().parent.parent.parent
 
 
-def load_data(
-    gdrive_id: str = "1Wkn2KazyHsSqBQnONkI98SnN--k3gAT7",
-    output_dir: str | Path = "../data/raw",
-) -> None:
-    output_dir = Path(output_dir)
+def load_train(data_dir: str | Path = "data/raw") -> pd.DataFrame:
+    train_dir = _HERE / data_dir / "train"
+    records = []
+    for label_dir in sorted(train_dir.iterdir()):
+        if label_dir.is_dir():
+            for img in sorted(label_dir.glob("*")):
+                if img.is_file():
+                    records.append({
+                        "path": str(img.relative_to(_HERE)),
+                        "label": label_dir.name,
+                    })
+    return pd.DataFrame(records)
 
-    if output_dir.exists() and any(output_dir.iterdir()):
-        print(f"Data already exists in {output_dir}, skipping download")
-        return
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    url = f"https://drive.google.com/drive/folders/{gdrive_id}"
-    gdown.download_folder(url, output=str(output_dir), quiet=False)
+def load_test(data_dir: str | Path = "data/raw") -> pd.DataFrame:
+    test_dir = _HERE / data_dir / "test"
+    records = []
+    for img in sorted(test_dir.glob("*")):
+        if img.is_file():
+            records.append({
+                "path": str(img.relative_to(_HERE)),
+                "image_id": img.stem,
+            })
+    return pd.DataFrame(records)
+
+
+def load_submission_example(data_dir: str | Path = "data/raw") -> pd.DataFrame:
+    return pd.read_csv(_HERE / data_dir / "submission.csv")

@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: big-data-big-trouble
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: ipykernel>=7.3.0
+Requires-Dist: matplotlib>=3.11.0
+Requires-Dist: numpy>=2.5.0
+Requires-Dist: pandas>=3.0.3
+Requires-Dist: seaborn>=0.13.2
+
+# big-data-big-trouble
