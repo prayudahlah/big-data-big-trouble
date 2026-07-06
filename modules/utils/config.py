@@ -5,7 +5,8 @@ import torch
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 DATA_RAW = PROJECT_ROOT / "data" / "raw"
-EXPERIMENTS = PROJECT_ROOT / "experiments"
+NOTEBOOKS = PROJECT_ROOT / "notebooks"
+EXPERIMENTS = NOTEBOOKS / "experiments"
 RESULTS = EXPERIMENTS / "results"
 RESULTS.mkdir(parents=True, exist_ok=True)
 
