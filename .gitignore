@@ -1,8 +1,4 @@
-# Blacklist
 data
 .env
 __pycache__
-
-# Whitelist
-!modules/data
 

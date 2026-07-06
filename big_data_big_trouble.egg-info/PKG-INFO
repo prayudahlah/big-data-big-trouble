@@ -8,6 +8,11 @@ Requires-Dist: ipykernel>=7.3.0
 Requires-Dist: matplotlib>=3.11.0
 Requires-Dist: numpy>=2.5.0
 Requires-Dist: pandas>=3.0.3
+Requires-Dist: scikit-learn>=1.9.0
 Requires-Dist: seaborn>=0.13.2
+Requires-Dist: timm>=0.9
+Requires-Dist: torch>=2.0
+Requires-Dist: torchvision>=0.15
+Requires-Dist: tqdm>=4.0
 
 # big-data-big-trouble

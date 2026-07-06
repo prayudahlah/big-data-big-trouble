@@ -2,7 +2,7 @@ import json
 
 import torch
 import torch.nn as nn
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
@@ -48,7 +48,7 @@ def fit(
             inputs, targets = inputs.to(device), targets.to(device)
 
             if is_train:
-                with autocast():
+                with autocast(device_type=device):
                     outputs = model(inputs)
                     loss = criterion(outputs, targets) / accumulation_steps
 
@@ -61,7 +61,7 @@ def fit(
 
                 total_loss += loss.item() * accumulation_steps
             else:
-                with torch.no_grad(), autocast():
+                with torch.no_grad(), autocast(device_type=device):
                     outputs = model(inputs)
                     loss = criterion(outputs, targets)
                 total_loss += loss.item()
@@ -83,7 +83,7 @@ def fit(
 
     optimizer = AdamW(model.classifier.parameters(), lr=lr_head, weight_decay=1e-4)
     scheduler = CosineAnnealingLR(optimizer, T_max=epochs_head)
-    scaler = GradScaler()
+    scaler = GradScaler(device=device)
 
     epochs_no_improve = 0
     for epoch in range(epochs_head):
@@ -122,7 +122,7 @@ def fit(
     ]
     optimizer = AdamW(param_groups, weight_decay=1e-4)
     scheduler = CosineAnnealingLR(optimizer, T_max=epochs_finetune)
-    scaler = GradScaler()
+    scaler = GradScaler(device=device)
 
     for epoch in range(epochs_finetune):
         train_loss, _, _, _ = run_epoch(train_loader, "train", optimizer, scaler)
