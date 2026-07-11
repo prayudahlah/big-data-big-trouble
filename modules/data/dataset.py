@@ -202,3 +202,89 @@ def get_dataloaders_v2(
     )
 
     return train_loader, val_loader, val_ds
+
+
+def _get_train_transform_v3(img_size=IMG_SIZE):
+    from timm.data.auto_augment import augment_ops
+
+    aa_params = dict(
+        translate_const=int(img_size * 0.45),
+        img_size=img_size,
+        magnitude=9,
+    )
+    aa_ops = augment_ops("augmix", aa_params)
+
+    return transforms.Compose([
+        transforms.RandomResizedCrop(img_size, scale=(0.3, 1.0)),
+        transforms.RandomHorizontalFlip(),
+        aa_ops,
+        transforms.ToTensor(),
+        transforms.Normalize(MEAN, STD),
+        transforms.RandomErasing(p=0.3),
+    ])
+
+
+def get_dataloaders_v3(
+    batch_size,
+    num_workers=4,
+    val_split=0.2,
+    img_size=IMG_SIZE,
+    oversample=True,
+    use_mixup=False,
+    mixup_alpha=0.2,
+):
+    from modules.utils.load_data import load_train
+
+    df = load_train()
+
+    train_df, val_df = train_test_split(
+        df,
+        test_size=val_split,
+        stratify=df["label"],
+        random_state=SEED,
+    )
+    train_df = train_df.reset_index(drop=True)
+    val_df = val_df.reset_index(drop=True)
+
+    train_ds = TrashDataset(train_df, transform=_get_train_transform_v3(img_size))
+    val_ds = TrashDataset(val_df, transform=_get_val_transform(img_size))
+
+    train_labels = train_df["label"].map(_LABEL_TO_IDX).values
+    val_ds.class_weights = _compute_class_weights(train_labels.copy())
+
+    if oversample:
+        class_counts = torch.bincount(torch.tensor(train_labels))
+        weights = 1.0 / class_counts[train_labels].float()
+        sampler = torch.utils.data.WeightedRandomSampler(
+            weights, len(weights), replacement=True,
+        )
+        shuffle = False
+    else:
+        sampler = None
+        shuffle = True
+
+    if use_mixup:
+        from modules.training.collator import MixUpCollator
+        collate_fn = MixUpCollator(alpha=mixup_alpha, num_classes=NUM_CLASSES)
+    else:
+        collate_fn = None
+
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        sampler=sampler,
+        shuffle=False if sampler else shuffle,
+        num_workers=num_workers,
+        pin_memory=torch.cuda.is_available(),
+        collate_fn=collate_fn,
+    )
+
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+
+    return train_loader, val_loader, val_ds

@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 import torch
 import torch.nn as nn
@@ -44,13 +45,20 @@ def fit(
         all_preds, all_labels = [], []
         stream = tqdm(loader, desc=f"{name} {phase}", leave=False)
 
-        for i, (inputs, targets) in enumerate(stream):
-            inputs, targets = inputs.to(device), targets.to(device)
+        for i, batch in enumerate(stream):
+            inputs, targets = batch
+            if isinstance(targets, tuple):
+                targets_a, targets_b, lam = targets
+                targets_a, targets_b = targets_a.to(device), targets_b.to(device)
+            else:
+                targets_a = targets_b = targets
+                lam = 1.0
+            inputs = inputs.to(device)
 
             if is_train:
                 with autocast(device_type=device):
                     outputs = model(inputs)
-                    loss = criterion(outputs, targets) / accumulation_steps
+                    loss = (lam * criterion(outputs, targets_a) + (1 - lam) * criterion(outputs, targets_b)) / accumulation_steps
 
                 scaler.scale(loss).backward()
 
@@ -63,12 +71,12 @@ def fit(
             else:
                 with torch.no_grad(), autocast(device_type=device):
                     outputs = model(inputs)
-                    loss = criterion(outputs, targets)
+                    loss = criterion(outputs, targets_a)
                 total_loss += loss.item()
 
             preds = outputs.argmax(dim=1).cpu().numpy()
             all_preds.extend(preds.tolist())
-            all_labels.extend(targets.cpu().numpy().tolist())
+            all_labels.extend(targets_a.cpu().numpy().tolist())
 
             if is_train:
                 stream.set_postfix(loss=loss.item())
@@ -173,3 +181,88 @@ def fit(
         json.dump(save_result, f, indent=2)
 
     return result
+
+
+def fit_progressive(
+    model,
+    progressive_loaders,
+    name="model",
+    encoder_name=None,
+    accumulation_steps=1,
+    epochs_head=10,
+    epochs_finetune=20,
+    lr_head=1e-3,
+    lr_finetune=1e-4,
+    patience=10,
+    class_weights=None,
+    criterion=None,
+    device="cuda",
+):
+    model = model.to(device)
+    best_val_f1 = 0.0
+    best_state = None
+    best_epoch = 0
+    total_epochs = 0
+
+    for stage_idx, (train_loader, val_loader) in enumerate(progressive_loaders):
+        img_size = getattr(train_loader.dataset, "img_size", 224)
+        print(f"\n=== Progressive Stage {stage_idx + 1}: {img_size}x{img_size} ===")
+
+        result = fit(
+            model,
+            train_loader,
+            val_loader,
+            name=f"{name}_stage{stage_idx + 1}",
+            encoder_name=encoder_name,
+            accumulation_steps=accumulation_steps,
+            epochs_head=epochs_head,
+            epochs_finetune=epochs_finetune,
+            lr_head=lr_head,
+            lr_finetune=lr_finetune,
+            patience=patience,
+            class_weights=class_weights,
+            criterion=criterion,
+            device=device,
+        )
+
+        total_epochs += result["best_epoch"]
+
+        if result["best_val_f1"] > best_val_f1:
+            best_val_f1 = result["best_val_f1"]
+            best_state = deepcopy(model.state_dict())
+            best_epoch = total_epochs
+
+    model.load_state_dict(best_state)
+    _, _, all_preds, all_labels = _run_epoch(model, val_loader, criterion, device, "val")
+
+    final_result = {
+        "name": name,
+        "encoder_name": encoder_name or name,
+        "best_val_f1": best_val_f1,
+        "best_epoch": best_epoch,
+    }
+
+    torch.save(best_state, RESULTS / f"{name}.pt")
+    with open(RESULTS / f"{name}.json", "w") as f:
+        save_result = {k: v for k, v in final_result.items()}
+        json.dump(save_result, f, indent=2)
+
+    return final_result
+
+
+def _run_epoch(model, loader, criterion, device, phase="val"):
+    model.eval()
+    total_loss = 0.0
+    all_preds, all_labels = [], []
+    with torch.no_grad():
+        for inputs, targets in loader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            total_loss += loss.item()
+            preds = outputs.argmax(dim=1).cpu().numpy()
+            all_preds.extend(preds.tolist())
+            all_labels.extend(targets.cpu().numpy().tolist())
+    avg_loss = total_loss / len(loader)
+    f1_macro, f1_per_class, prec, rec = compute_metrics(all_labels, all_preds)
+    return avg_loss, f1_macro, all_preds, all_labels
