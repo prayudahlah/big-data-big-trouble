@@ -205,14 +205,9 @@ def get_dataloaders_v2(
 
 
 def _get_train_transform_v3(img_size=IMG_SIZE):
-    from timm.data.auto_augment import augment_ops
+    from timm.data.auto_augment import augmix_ops
 
-    aa_params = dict(
-        translate_const=int(img_size * 0.45),
-        img_size=img_size,
-        magnitude=9,
-    )
-    aa_ops = augment_ops("augmix", aa_params)
+    aa_ops = augmix_ops(magnitude=9)
 
     return transforms.Compose([
         transforms.RandomResizedCrop(img_size, scale=(0.3, 1.0)),
