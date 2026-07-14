@@ -49,11 +49,10 @@ def fit(
             inputs, targets = batch
             if isinstance(targets, tuple):
                 targets_a, targets_b, lam = targets
-                targets_a, targets_b = targets_a.to(device), targets_b.to(device)
             else:
                 targets_a = targets_b = targets
                 lam = 1.0
-            inputs = inputs.to(device)
+            inputs, targets_a, targets_b = inputs.to(device), targets_a.to(device), targets_b.to(device)
 
             if is_train:
                 with autocast(device_type=device):
