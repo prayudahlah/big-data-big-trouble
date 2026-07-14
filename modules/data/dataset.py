@@ -205,9 +205,9 @@ def get_dataloaders_v2(
 
 
 def _get_train_transform_v3(img_size=IMG_SIZE):
-    from timm.data.auto_augment import augmix_ops
+    from torchvision.transforms import AutoAugment, AutoAugmentPolicy
 
-    aa_ops = augmix_ops(magnitude=9)
+    aa_ops = AutoAugment(AutoAugmentPolicy.IMAGENET)
 
     return transforms.Compose([
         transforms.RandomResizedCrop(img_size, scale=(0.3, 1.0)),
