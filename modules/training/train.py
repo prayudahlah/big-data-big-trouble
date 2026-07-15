@@ -121,6 +121,8 @@ def fit(
     # Phase 2
     print(f"\n=== {name}: Phase 2 — Fine-tune All ===")
     model.unfreeze_encoder()
+    if best_state is None:
+        best_state = deepcopy(model.state_dict())
     model.load_state_dict(best_state)
 
     param_groups = [

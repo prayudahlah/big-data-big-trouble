@@ -1,0 +1,21 @@
+{
+  "name": "swin_tiny_patch4_window7_224_s2",
+  "encoder_name": "swin_tiny_patch4_window7_224",
+  "best_val_f1": 0.6555442193874702,
+  "best_epoch": 2,
+  "f1_per_class": [
+    0.0,
+    0.9727047146401985,
+    0.9909584086799277
+  ],
+  "precision_per_class": [
+    0.0,
+    0.9491525423728814,
+    0.9991896272285251
+  ],
+  "recall_per_class": [
+    0.0,
+    0.9974554707379135,
+    0.9828616978876046
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "efficientformer_l1_s2",
+  "encoder_name": "efficientformer_l1",
+  "best_val_f1": 0.9933514126482564,
+  "best_epoch": 16,
+  "f1_per_class": [
+    0.0,
+    0.9868007542426147,
+    0.9957991598319664
+  ],
+  "precision_per_class": [
+    0.0,
+    0.9751552795031055,
+    0.9995983935742971
+  ],
+  "recall_per_class": [
+    0.0,
+    0.9987277353689568,
+    0.9920286966919091
+  ]
+}
