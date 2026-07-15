@@ -22,12 +22,13 @@ class FocalLoss(nn.Module):
 
 
 class ClassBalancedLoss(nn.Module):
-    def __init__(self, beta=0.999, gamma=2.0, num_classes=3, reduction="mean"):
+    def __init__(self, beta=0.999, gamma=2.0, num_classes=3, reduction="mean", label_smoothing=0.0):
         super().__init__()
         self.beta = beta
         self.gamma = gamma
         self.num_classes = num_classes
         self.reduction = reduction
+        self.label_smoothing = label_smoothing
         self.register_buffer("effective_num", torch.zeros(num_classes))
         self.register_buffer("weights", torch.ones(num_classes))
 
@@ -38,9 +39,10 @@ class ClassBalancedLoss(nn.Module):
         self.weights = self.weights / self.weights.sum() * self.num_classes
 
     def forward(self, inputs, targets):
-        ce_loss = F.cross_entropy(inputs, targets, reduction="none")
-        pt = torch.exp(-ce_loss)
-        cb_loss = ((1 - pt) ** self.gamma * ce_loss)
+        nll_loss = F.cross_entropy(inputs, targets, reduction="none",
+                                   label_smoothing=self.label_smoothing)
+        pt = torch.exp(-nll_loss)
+        cb_loss = ((1 - pt) ** self.gamma * nll_loss)
         weights = self.weights.to(inputs.device).gather(0, targets)
         cb_loss = cb_loss * weights
         if self.reduction == "mean":
