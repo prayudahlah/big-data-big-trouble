@@ -1,0 +1,13 @@
+name,models,best_val_f1,f1_per,meta
+S7: All 6 models,C_focal_v1+ConvNeXt+EffNet+ResNet50+C_focal_v2+ConvNeXtV2,0.9872330644953058,[0.98130142 0.99493671 0.98546106],"LogisticRegression(max_iter=1000, random_state=42)"
+S4: Cv1+ConvV2+Eff,C_focal_v1+ConvNeXtV2+EffNet,0.9872101575034155,[0.98079322 0.99557242 0.98526483],"LogisticRegression(max_iter=1000, random_state=42)"
+All new (Cv2+ConvV2+Eff) 0.70+0.10+0.20,C_focal_v2+ConvNeXtV2+EffNet,0.9870693661549576,[0.98082192 0.99493671 0.98544947],
+S5: Cv2+ConvV2+Eff,C_focal_v2+ConvNeXtV2+EffNet,0.9870600095754791,[0.98053892 0.99557242 0.98506868],"LogisticRegression(max_iter=1000, random_state=42)"
+S8: Cv1+Cv2+ConvV2+Eff,C_focal_v1+C_focal_v2+ConvNeXtV2+EffNet,0.986766576884733,[0.98029434 0.99493671 0.98506868],"LogisticRegression(max_iter=1000, random_state=42)"
+S6: Cv2+ConvV2+Eff+RN50,C_focal_v2+ConvNeXtV2+EffNet+ResNet50,0.986660548787698,[0.98103792 0.99367889 0.98526483],"LogisticRegression(max_iter=1000, random_state=42)"
+Champion w/ Cv2 (Cv2+Conv+Eff) 0.70+0.10+0.20,C_focal_v2+ConvNeXt+EffNet,0.9860210884819947,[0.97906281 0.99493671 0.98406375],
+S1: Cv1+Conv+Eff (original),C_focal_v1+ConvNeXt+EffNet,0.9860155963053158,[0.97902098 0.99493671 0.9840891 ],"LogisticRegression(max_iter=1000, random_state=42)"
+S3: Cv2+Conv+Eff,C_focal_v2+ConvNeXt+EffNet,0.9858843335065236,[0.97903145 0.99493671 0.98368484],"LogisticRegression(max_iter=1000, random_state=42)"
+Champion w/ ConvV2 (Cv1+ConvV2+Eff) 0.70+0.10+0.20,C_focal_v1+ConvNeXtV2+EffNet,0.9856198609632757,[0.97955112 0.99304238 0.98426608],
+Champion v1 (Cv1+Conv+Eff) 0.70+0.10+0.20,C_focal_v1+ConvNeXt+EffNet,0.985615906502889,[0.97952048 0.99304238 0.98428486],
+S2: Cv1+Conv+Eff+RN50,C_focal_v1+ConvNeXt+EffNet+ResNet50,0.9853094943586745,[0.97875531 0.99367089 0.98350229],"LogisticRegression(max_iter=1000, random_state=42)"

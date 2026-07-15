@@ -22,7 +22,7 @@ def load_train(data_dir: str | Path = "data/raw") -> pd.DataFrame:
 def load_test(data_dir: str | Path = "data/raw") -> pd.DataFrame:
     test_dir = _HERE / data_dir / "test"
     records = []
-    for img in sorted(test_dir.glob("*")):
+    for img in sorted(test_dir.glob("*"), key=lambda p: int(p.stem)):
         if img.is_file():
             records.append({
                 "path": str(img.relative_to(_HERE)),

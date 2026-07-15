@@ -1,0 +1,8 @@
+name,best_val_f1,method
+Hierarchical_Stage1,0.9966554165002395,Hierarchical
+Hierarchical_Pipeline,0.9826361243795018,Hierarchical
+Hierarchical_Stage2,0.9791363037469341,Hierarchical
+Compound_Final_300px,0.976739088675877,Compound
+Compound_300px,0.976739088675877,Compound
+Compound_224px,0.9746992519893193,Compound
+Compound_128px,0.9602996882920053,Compound
