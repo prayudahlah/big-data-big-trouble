@@ -345,6 +345,7 @@ def fit_kfold(
     grad_ckpt=False,
     phase2_accumulation_steps=None,
     phase2_lr_finetune=None,
+    phase2_epochs_finetune=None,
 ):
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
     labels = train_df[label_col].values
@@ -433,13 +434,14 @@ def fit_kfold(
             p2_train, p2_val = phase2_make_loaders_fn(train_subset, val_subset)
             p2_acc = phase2_accumulation_steps if phase2_accumulation_steps is not None else accumulation_steps
             p2_lr = phase2_lr_finetune if phase2_lr_finetune is not None else lr_finetune
+            p2_ep = phase2_epochs_finetune if phase2_epochs_finetune is not None else epochs_finetune
             result2 = fit(
                 model, p2_train, p2_val,
                 name=f"{name}_fold{fold}_p2",
                 encoder_name=encoder_name,
                 accumulation_steps=p2_acc,
                 epochs_head=0,
-                epochs_finetune=epochs_finetune,
+                epochs_finetune=p2_ep,
                 lr_head=0,
                 lr_finetune=p2_lr,
                 patience=patience,
