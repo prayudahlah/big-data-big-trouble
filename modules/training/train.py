@@ -60,6 +60,7 @@ def fit(
     device="cuda",
     use_ema=True,
     ema_decay=0.999,
+    max_grad_norm=None,
 ):
     model = model.to(device)
     criterion = criterion or nn.CrossEntropyLoss(
@@ -97,6 +98,9 @@ def fit(
                 scaler.scale(loss).backward()
 
                 if (i + 1) % accumulation_steps == 0:
+                    if max_grad_norm is not None:
+                        scaler.unscale_(optimizer)
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                     scaler.step(optimizer)
                     scaler.update()
                     optimizer.zero_grad()
