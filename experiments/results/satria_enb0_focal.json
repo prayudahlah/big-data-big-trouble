@@ -1,0 +1,21 @@
+{
+  "name": "satria_enb0_focal",
+  "encoder_name": "efficientnet_b0",
+  "best_val_f1": 0.08659996719698211,
+  "best_epoch": 1,
+  "f1_per_class": [
+    0.0,
+    0.2597572974745818,
+    0.0
+  ],
+  "precision_per_class": [
+    0.0,
+    0.14926498303807012,
+    0.0
+  ],
+  "recall_per_class": [
+    0.0,
+    1.0,
+    0.0
+  ]
+}

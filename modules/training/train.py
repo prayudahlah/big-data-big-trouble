@@ -26,6 +26,7 @@ def fit(
     class_weights=None,
     criterion=None,
     device="cuda",
+    mode="head_finetune",
 ):
     model = model.to(device)
     criterion = criterion or nn.CrossEntropyLoss(
@@ -112,42 +113,43 @@ def fit(
             break
 
     # Phase 2
-    print(f"\n=== {name}: Phase 2 — Fine-tune All ===")
-    model.unfreeze_encoder()
-    model.load_state_dict(best_state)
+    if mode != "linear_probe":
+        print(f"\n=== {name}: Phase 2 — Fine-tune All ===")
+        model.unfreeze_encoder()
+        model.load_state_dict(best_state)
 
-    param_groups = [
-        {"params": model.encoder.parameters(), "lr": lr_finetune},
-        {"params": model.classifier.parameters(), "lr": lr_finetune * 10},
-    ]
-    optimizer = AdamW(param_groups, weight_decay=1e-4)
-    scheduler = CosineAnnealingLR(optimizer, T_max=epochs_finetune)
-    scaler = GradScaler()
+        param_groups = [
+            {"params": model.encoder.parameters(), "lr": lr_finetune},
+            {"params": model.classifier.parameters(), "lr": lr_finetune * 10},
+        ]
+        optimizer = AdamW(param_groups, weight_decay=1e-4)
+        scheduler = CosineAnnealingLR(optimizer, T_max=epochs_finetune)
+        scaler = GradScaler()
 
-    for epoch in range(epochs_finetune):
-        train_loss, _, _, _ = run_epoch(train_loader, "train", optimizer, scaler)
-        val_loss, val_f1, _, _ = run_epoch(val_loader, "val")
+        for epoch in range(epochs_finetune):
+            train_loss, _, _, _ = run_epoch(train_loader, "train", optimizer, scaler)
+            val_loss, val_f1, _, _ = run_epoch(val_loader, "val")
 
-        history["train_loss"].append(train_loss)
-        history["val_f1"].append(val_f1)
+            history["train_loss"].append(train_loss)
+            history["val_f1"].append(val_f1)
 
-        if val_f1 > best_val_f1:
-            best_val_f1 = val_f1
-            best_epoch = epoch + epochs_head + 1
-            best_state = model.state_dict()
-            epochs_no_improve = 0
-        else:
-            epochs_no_improve += 1
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
+                best_epoch = epoch + epochs_head + 1
+                best_state = model.state_dict()
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
 
-        print(
-            f"  E{epoch+1+epochs_head:02d}: train_loss={train_loss:.4f}  "
-            f"val_f1={val_f1:.4f}  best={best_val_f1:.4f}"
-        )
-        scheduler.step()
+            print(
+                f"  E{epoch+1+epochs_head:02d}: train_loss={train_loss:.4f}  "
+                f"val_f1={val_f1:.4f}  best={best_val_f1:.4f}"
+            )
+            scheduler.step()
 
-        if epochs_no_improve >= patience:
-            print(f"  Early stopping at epoch {epoch+1+epochs_head}")
-            break
+            if epochs_no_improve >= patience:
+                print(f"  Early stopping at epoch {epoch+1+epochs_head}")
+                break
 
     # Final evaluation
     model.load_state_dict(best_state)

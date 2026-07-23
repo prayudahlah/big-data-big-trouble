@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from PIL import Image
 from sklearn.model_selection import StratifiedShuffleSplit
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torchvision import transforms
 
 from modules.utils.config import IMG_SIZE, MEAN, STD, NUM_CLASSES, PROJECT_ROOT
@@ -29,12 +29,19 @@ class TrashDataset(Dataset):
         return img, label
 
 
-def get_transforms(augment: bool = True):
+def get_transforms(augment: bool = True, use_randaugment: bool = False):
     resize = transforms.Resize((IMG_SIZE, IMG_SIZE))
     to_tensor = transforms.ToTensor()
     normalize = transforms.Normalize(MEAN, STD)
 
     if augment:
+        if use_randaugment:
+            return transforms.Compose([
+                transforms.Resize((IMG_SIZE, IMG_SIZE)),
+                transforms.RandAugment(num_ops=2, magnitude=9),
+                to_tensor,
+                normalize,
+            ])
         return transforms.Compose([
             transforms.Resize((int(IMG_SIZE * 1.14), int(IMG_SIZE * 1.14))),
             transforms.RandomResizedCrop(IMG_SIZE, scale=(0.8, 1.0)),
@@ -47,7 +54,13 @@ def get_transforms(augment: bool = True):
     return transforms.Compose([resize, to_tensor, normalize])
 
 
-def get_dataloaders(batch_size=32, num_workers=4, val_split=0.2):
+def get_dataloaders(
+    batch_size=32,
+    num_workers=4,
+    val_split=0.2,
+    use_randaugment=False,
+    use_weighted_sampler=False,
+):
     df = load_train()
     y = df["label"].map(_CLASS_TO_IDX).values
 
@@ -57,20 +70,47 @@ def get_dataloaders(batch_size=32, num_workers=4, val_split=0.2):
     df_train = df.iloc[train_idx].reset_index(drop=True)
     df_val = df.iloc[val_idx].reset_index(drop=True)
 
-    train_ds = TrashDataset(df_train, transform=get_transforms(augment=True))
+    train_ds = TrashDataset(
+        df_train,
+        transform=get_transforms(augment=True, use_randaugment=use_randaugment),
+    )
     val_ds = TrashDataset(df_val, transform=get_transforms(augment=False))
 
-    counts = np.bincount([_CLASS_TO_IDX[l] for l in df_train["label"]], minlength=NUM_CLASSES)
+    counts = np.bincount(
+        [_CLASS_TO_IDX[l] for l in df_train["label"]], minlength=NUM_CLASSES
+    )
     class_weights = torch.FloatTensor(counts.sum() / (NUM_CLASSES * counts))
     val_ds.class_weights = class_weights
 
-    train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=True,
-    )
+    if use_weighted_sampler:
+        sample_weights = torch.FloatTensor(
+            [1.0 / counts[_CLASS_TO_IDX[l]] for l in df_train["label"]]
+        )
+        sampler = WeightedRandomSampler(
+            sample_weights, num_samples=len(sample_weights), replacement=True
+        )
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=batch_size,
+            sampler=sampler,
+            num_workers=num_workers,
+            pin_memory=True,
+        )
+    else:
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=True,
+        )
+
     val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True,
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
     )
 
     return train_loader, val_loader, val_ds
