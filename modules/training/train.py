@@ -1,15 +1,17 @@
 import json
 from copy import deepcopy
 
+import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.model_selection import StratifiedKFold
 from torch.amp import autocast, GradScaler
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
 
 from modules.training.evaluate import compute_metrics
-from modules.utils.config import RESULTS
+from modules.utils.config import NUM_CLASSES, RESULTS
 
 
 class EMA:
@@ -321,6 +323,156 @@ def fit_progressive(
         json.dump(save_result, f, indent=2)
 
     return final_result
+
+
+def fit_kfold(
+    train_df,
+    label_col="label",
+    n_splits=5,
+    name="model",
+    encoder_name=None,
+    make_loaders_fn=None,
+    phase2_make_loaders_fn=None,
+    accumulation_steps=1,
+    epochs_head=10,
+    epochs_finetune=20,
+    lr_head=1e-3,
+    lr_finetune=1e-4,
+    patience=10,
+    criterion=None,
+    device="cuda",
+    use_ema=True,
+    grad_ckpt=False,
+    phase2_accumulation_steps=None,
+    phase2_lr_finetune=None,
+):
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
+    labels = train_df[label_col].values
+    oof_probs = np.zeros((len(train_df), NUM_CLASSES), dtype=np.float32)
+    oof_labels = np.zeros(len(train_df), dtype=np.int64)
+    fold_scores = []
+    best_states = []
+
+    for fold, (train_idx, val_idx) in enumerate(skf.split(train_df, labels)):
+        print(f"\n{'='*60}")
+        print(f"  Fold {fold + 1}/{n_splits}")
+        print(f"{'='*60}")
+
+        from modules.models.factory import TrashClassifier
+
+        model = TrashClassifier(encoder_name=encoder_name, num_classes=NUM_CLASSES)
+        if grad_ckpt:
+            try:
+                model.encoder.set_grad_checkpointing(True)
+            except AttributeError:
+                pass
+
+        train_subset = train_df.iloc[train_idx].reset_index(drop=True)
+        val_subset = train_df.iloc[val_idx].reset_index(drop=True)
+
+        if make_loaders_fn is None:
+            from torch.utils.data import DataLoader, Dataset
+
+            class _DefaultDS(Dataset):
+                def __init__(self, df, tfm):
+                    self.df = df
+                    self.tfm = tfm
+                def __len__(self):
+                    return len(self.df)
+                def __getitem__(self, idx):
+                    row = self.df.iloc[idx]
+                    from PIL import Image
+                    from io import BytesIO
+                    p = str(row["path"])
+                    if len(p) > 240 and not p.startswith("\\\\?\\"):
+                        p = "\\\\?\\" + p
+                    with open(p, "rb") as f:
+                        img = Image.open(BytesIO(f.read())).convert("RGB")
+                    if self.tfm:
+                        img = self.tfm(img)
+                    return img, int(row[label_col])
+
+            from modules.utils.config import MEAN, STD
+            import albumentations as A
+            from albumentations.pytorch import ToTensorV2
+
+            train_tfm = A.Compose([
+                A.RandomResizedCrop(224, 224, scale=(0.6, 1.0)),
+                A.HorizontalFlip(p=0.5), A.VerticalFlip(p=0.5),
+                A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.1, rotate_limit=30, p=0.5),
+                A.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, p=0.5),
+                A.CoarseDropout(max_holes=8, max_height=24, max_width=24, p=0.5),
+                A.ToTensorV2(), A.Normalize(MEAN, STD),
+            ])
+            val_tfm = A.Compose([
+                A.Resize(224, 224), A.ToTensorV2(), A.Normalize(MEAN, STD),
+            ])
+            train_loader = DataLoader(_DefaultDS(train_subset, train_tfm), batch_size=16, shuffle=True, num_workers=0)
+            val_loader = DataLoader(_DefaultDS(val_subset, val_tfm), batch_size=16, shuffle=False, num_workers=0)
+        else:
+            train_loader, val_loader = make_loaders_fn(train_subset, val_subset)
+
+        result = fit(
+            model, train_loader, val_loader,
+            name=f"{name}_fold{fold}",
+            encoder_name=encoder_name,
+            accumulation_steps=accumulation_steps,
+            epochs_head=epochs_head,
+            epochs_finetune=epochs_finetune,
+            lr_head=lr_head,
+            lr_finetune=lr_finetune,
+            patience=patience,
+            criterion=criterion,
+            device=device,
+            use_ema=use_ema,
+        )
+
+        p2_val = None
+        if phase2_make_loaders_fn is not None:
+            print(f"\n--- Phase 2 (progressive) ---")
+            p2_train, p2_val = phase2_make_loaders_fn(train_subset, val_subset)
+            p2_acc = phase2_accumulation_steps if phase2_accumulation_steps is not None else accumulation_steps
+            p2_lr = phase2_lr_finetune if phase2_lr_finetune is not None else lr_finetune
+            result2 = fit(
+                model, p2_train, p2_val,
+                name=f"{name}_fold{fold}_p2",
+                encoder_name=encoder_name,
+                accumulation_steps=p2_acc,
+                epochs_head=0,
+                epochs_finetune=epochs_finetune,
+                lr_head=0,
+                lr_finetune=p2_lr,
+                patience=patience,
+                criterion=criterion,
+                device=device,
+                use_ema=use_ema,
+            )
+            torch.save(deepcopy(model.state_dict()), RESULTS / f"{name}_fold{fold}.pt")
+
+        model.load_state_dict(torch.load(RESULTS / f"{name}_fold{fold}.pt", map_location="cpu"))
+        model.to(device).eval()
+        oof_loader = p2_val if phase2_make_loaders_fn is not None else val_loader
+        all_oof_p, all_oof_l = [], []
+        with torch.no_grad():
+            for x, y in oof_loader:
+                x = x.to(device)
+                logits = model(x)
+                probs = torch.softmax(logits, dim=1)
+                all_oof_p.append(probs.cpu().numpy())
+                all_oof_l.append(y.numpy())
+        oof_probs[val_idx] = np.concatenate(all_oof_p)
+        oof_labels[val_idx] = np.concatenate(all_oof_l)
+
+        fold_scores.append(result["best_val_f1"])
+        best_states.append(RESULTS / f"{name}_fold{fold}.pt")
+
+    np.save(RESULTS / f"{name}_oof_probs.npy", oof_probs)
+    np.save(RESULTS / f"{name}_oof_labels.npy", oof_labels)
+
+    mean_f1 = np.mean(fold_scores)
+    print(f"\n>>> {name} 5-Fold CV F1: {[f'{s:.4f}' for s in fold_scores]}")
+    print(f">>> Mean F1: {mean_f1:.4f}")
+    return mean_f1, oof_probs, oof_labels, best_states
 
 
 def _run_epoch(model, loader, criterion, device, phase="val"):

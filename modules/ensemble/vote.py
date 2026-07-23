@@ -81,15 +81,50 @@ def predict_stacking(models, test_loader, val_loader, device="cuda"):
     return probs, meta
 
 
-def generate_submission(pred_probs, output_path="submission.csv"):
-    if isinstance(pred_probs, np.ndarray):
-        preds = pred_probs.argmax(axis=1)
+def generate_submission(preds_or_probs, output_path="submission.csv", as_ints=False):
+    if isinstance(preds_or_probs, (np.ndarray, torch.Tensor)):
+        if preds_or_probs.ndim == 2:
+            preds = preds_or_probs.argmax(axis=1)
+        else:
+            preds = preds_or_probs
     else:
-        preds = pred_probs.argmax(dim=1).tolist()
-    from modules.utils.config import CLASS_LABELS
+        preds = preds_or_probs
+    if isinstance(preds, torch.Tensor):
+        preds = preds.tolist()
+    elif isinstance(preds, np.ndarray):
+        preds = preds.tolist()
+    preds = [int(p) for p in preds]
 
-    label_names = [CLASS_LABELS[p] for p in preds]
-    df = pd.DataFrame({"id": range(1, len(preds) + 1), "predicted": label_names})
+    if as_ints:
+        df = pd.DataFrame({"id": range(1, len(preds) + 1), "predicted": preds})
+    else:
+        from modules.utils.config import CLASS_LABELS
+        label_names = [CLASS_LABELS[p] for p in preds]
+        df = pd.DataFrame({"id": range(1, len(preds) + 1), "predicted": label_names})
     df.to_csv(output_path, index=False)
     print(f"Submission saved to {output_path}")
     return df
+
+
+def tune_thresholds(val_probs, val_labels, n_classes=3, step=0.05):
+    from sklearn.metrics import f1_score
+
+    best_thresh = np.ones(n_classes) * 0.5
+    best_f1 = 0.0
+    grid = np.arange(step, 1.0, step)
+    for c in range(n_classes):
+        for t in grid:
+            thresh = best_thresh.copy()
+            thresh[c] = t
+            adjusted = val_probs / thresh
+            preds = adjusted.argmax(axis=1)
+            f1 = f1_score(val_labels, preds, average="macro")
+            if f1 > best_f1:
+                best_f1 = f1
+                best_thresh[c] = t
+    return best_thresh
+
+
+def apply_threshold(probs, thresholds):
+    adjusted = probs / np.array(thresholds)
+    return adjusted.argmax(axis=1)
